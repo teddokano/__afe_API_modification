@@ -50,19 +50,20 @@
 #include	<cmath>
 #include	<vector>
 #include	<variant>
+#include	<algorithm>
+#include	<functional>
 
 #define		NON_TEMPLATE_VERSION_FOR_START_AND_READ
 
 class AFE_base : public SPI_for_AFE
 {
 public:
-
 	/** ADC readout types */
 	using raw_t								= int32_t;
 	using microvolt_t						= double;
 
 	/** Constructor to create a AFE_base instance */
-	AFE_base( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET );
+	AFE_base( SPI& spi, bool spi_addr, bool highspeed_variant, int nINT, int DRDY, int SYN, int nRESET );
 
 	/** Destractor */
 	virtual ~AFE_base();
@@ -181,6 +182,17 @@ public:
 		read( data );
 	};
 #endif
+
+	enum LV_mux_sel : uint8_t {
+		REF2_REF2	= 0,
+		GPIO0_GPIO1,
+		REFCOARSE_REF2,
+		VADD_REF2,
+		VHDD_REF2,
+		REF2_VHSS,
+		HV_MUX,
+	};
+
 	
 	/** Convert raw output to micro-volt
 	 *
@@ -189,7 +201,34 @@ public:
 	 */
 	inline double raw2uv( int ch, raw_t value )
 	{
-		return value * coeff_uV[ ch ];
+		double	v	= value * coeff_uV[ ch ];
+
+		if ( HV_MUX != mux_setting[ ch ] )
+		{
+#if 1
+			switch ( mux_setting[ ch ] )
+			{
+				case REF2_REF2:
+				case GPIO0_GPIO1:
+					return v;
+					break;
+				case REFCOARSE_REF2:
+				case VADD_REF2:
+					return 2.00 * (v + 1.5e6);
+					break;
+				case VHDD_REF2:
+					return 32.00 * (v + 0.25e6);
+					break;
+				case REF2_VHSS:
+					return -32.00 * (v - 0.25e6);
+					break;
+			}
+#else
+			return v;
+#endif
+		}
+		
+		return v;
 	}
 	
 	/** Convert raw output to milli-volt
@@ -199,7 +238,7 @@ public:
 	 */
 	inline double raw2mv( int ch, raw_t value )
 	{
-		return value * coeff_uV[ ch ] * 1e-3;
+		return raw2uv( ch, value ) * 1e-3;
 	}
 	
 	/** Convert raw output to volt
@@ -209,7 +248,7 @@ public:
 	 */
 	inline double raw2v( int ch, raw_t value )
 	{
-		return value * coeff_uV[ ch ] * 1e-6;
+		return raw2uv( ch, value ) * 1e-6;
 	}
 	
 	/** Coefficient to convert from ADC read value to micro-volt
@@ -250,6 +289,7 @@ public:
 	void	use_DRDY_trigger( bool use = true );
 
 protected:
+	bool			highspeed_variant;
 	InterruptIn		pin_nINT;
 	InterruptIn		pin_DRDY;
 	DigitalOut		pin_SYN;
@@ -263,6 +303,10 @@ protected:
 	/** Coefficient to convert from ADC read value to micro-volt */
 	double			coeff_uV[ 16 ];
 
+	/** Multiplexer setting */
+	int				mux_setting[ 16 ];
+
+	
 	/** Channel delay */
 	double			ch_delay[ 16 ];
 	double			total_delay;
@@ -302,7 +346,7 @@ public:
 	} ref_points;
 	
 	/** Constructor to create a AFE_base instance */
-	NAFE13388_Base( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET );
+	NAFE13388_Base( SPI& spi, bool spi_addr, bool highspeed_variant, int nINT, int DRDY, int SYN, int nRESET );
 
 	/** Destractor */
 	virtual ~NAFE13388_Base();
@@ -677,7 +721,7 @@ class NAFE13388 : public NAFE13388_Base
 {
 public:	
 	/** Constructor to create a NAFE13388 instance */
-	NAFE13388( SPI& spi, bool spi_addr = 0, int nINT = D2, int DRDY = D3, int SYN = D5, int nRESET = D6 );
+	NAFE13388( SPI& spi, bool spi_addr = 0, bool highspeed_variant = false, int nINT = D2, int DRDY = D3, int SYN = D5, int nRESET = D6 );
 
 	/** Destractor */
 	virtual ~NAFE13388();
@@ -687,7 +731,7 @@ class NAFE13388_UIM : public NAFE13388_Base
 {
 public:	
 	/** Constructor to create a NAFE13388 instance */
-	NAFE13388_UIM( SPI& spi, bool spi_addr = 0, int nINT = D3, int DRDY = D4, int SYN = D6, int nRESET = D7 );
+	NAFE13388_UIM( SPI& spi, bool spi_addr = 0, bool highspeed_variant = false, int nINT = D3, int DRDY = D4, int SYN = D6, int nRESET = D7 );
 
 	/** Destractor */
 	virtual ~NAFE13388_UIM();

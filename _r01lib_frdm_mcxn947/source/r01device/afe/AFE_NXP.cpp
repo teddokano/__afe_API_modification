@@ -18,8 +18,8 @@ double	AFE_base::delay_accuracy	= 1.1;
 
 /* AFE_base class ******************************************/
 
-AFE_base::AFE_base( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET ) : 
-	SPI_for_AFE( spi, spi_addr ), pin_nINT( nINT ), pin_DRDY( DRDY ), pin_SYN( SYN ), pin_nRESET( nRESET, 1 ), enabled_channels( 0 )
+AFE_base::AFE_base( SPI& spi, bool spi_addr, bool hsv, int nINT, int DRDY, int SYN, int nRESET ) : 
+	SPI_for_AFE( spi, spi_addr ), highspeed_variant( hsv ), pin_nINT( nINT ), pin_DRDY( DRDY ), pin_SYN( SYN ), pin_nRESET( nRESET, 1 ), enabled_channels( 0 )
 {
 }
 
@@ -143,8 +143,8 @@ AFE_base::callback_fp_t	AFE_base::cbf_DRDY		= nullptr;
 
 /* NAFE13388_Base class ******************************************/
 
-NAFE13388_Base::NAFE13388_Base( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET ) 
-	: AFE_base( spi, spi_addr, nINT, DRDY, SYN, nRESET )
+NAFE13388_Base::NAFE13388_Base( SPI& spi, bool spi_addr, bool hsv, int nINT, int DRDY, int SYN, int nRESET ) 
+	: AFE_base( spi, spi_addr, hsv, nINT, DRDY, SYN, nRESET )
 {
 }
 
@@ -189,17 +189,23 @@ void NAFE13388_Base::reset( bool hardware_reset )
 void NAFE13388_Base::open_logical_channel( int ch, const uint16_t (&cc)[ 4 ] )
 {	
 	command( ch );
+
+	if ( cc[ 0 ] & 0x0010 )
+	{
+		coeff_uV[ ch ]		= ((10.0 / (double)(1L << 24)) / pga_gain[ (cc[ 0 ] >> 5) & 0x7 ]) * 1e6;
+		mux_setting[ ch ]	= HV_MUX;
+	}
+	else
+	{
+		coeff_uV[ ch ]		= ((10.0 / (double)(1L << 24)) / 2.5) * 1e6;
+		mux_setting[ ch ]	= (cc[ 0 ] >> 1) & 0x7;
+	}
 	
 	for ( auto i = 0; i < 4; i++ )
 		reg( CH_CONFIG0 + i, cc[ i ] );
 	
 	const uint16_t	setbit	= 0x1 << ch;
 	const uint16_t	bits	= bit_op( CH_CONFIG4, ~setbit, setbit );
-	
-	if ( cc[ 0 ] & 0x0010 )
-		coeff_uV[ ch ]	= ((10.0 / (double)(1L << 24)) / pga_gain[ (cc[ 0 ] >> 5) & 0x7 ]) * 1e6;
-	else
-		coeff_uV[ ch ]	= (4.0 / (double)(1L << 24)) * 1e6;
 	
 	ch_delay[ ch ]		= calc_delay( ch );
 	channel_info_update( bits );
@@ -246,6 +252,12 @@ double NAFE13388_Base::calc_delay( int ch )
 	
 	double		base_freq			= data_rates[ adc_data_rate ];
 	double		delay_setting		= delays[ ch_delay ] / 4608000.00;
+	
+	if ( highspeed_variant )
+	{
+		base_freq		*= 2.00;
+		delay_setting	/= 2.00;		
+	}
 	
 	if ( (28 < adc_data_rate) || (4 < adc_sinc) || ((adc_data_rate < 12) && (adc_sinc)) )
 		return 0.00;
@@ -518,8 +530,8 @@ void NAFE13388_Base::blink_leds( void )
 
 /* NAFE13388 class ******************************************/
 
-NAFE13388::NAFE13388( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET ) 
-	: NAFE13388_Base( spi, spi_addr, nINT, DRDY, SYN, nRESET )
+NAFE13388::NAFE13388( SPI& spi, bool spi_addr, bool hsv, int nINT, int DRDY, int SYN, int nRESET ) 
+	: NAFE13388_Base( spi, spi_addr, hsv, nINT, DRDY, SYN, nRESET )
 {
 }
 
@@ -529,8 +541,8 @@ NAFE13388::~NAFE13388()
 
 /* NAFE13388_UIM class ******************************************/
 
-NAFE13388_UIM::NAFE13388_UIM( SPI& spi, bool spi_addr, int nINT, int DRDY, int SYN, int nRESET ) 
-	: NAFE13388_Base( spi, spi_addr, nINT, DRDY, SYN, nRESET )
+NAFE13388_UIM::NAFE13388_UIM( SPI& spi, bool spi_addr, bool hsv, int nINT, int DRDY, int SYN, int nRESET ) 
+	: NAFE13388_Base( spi, spi_addr, hsv, nINT, DRDY, SYN, nRESET )
 {
 }
 

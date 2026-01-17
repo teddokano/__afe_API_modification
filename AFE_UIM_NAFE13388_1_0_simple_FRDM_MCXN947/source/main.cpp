@@ -10,6 +10,17 @@
 SPI				spi( D11, D12, D13, D10 );	//	MOSI, MISO, SCLK, CS
 NAFE13388_UIM	afe( spi );
 
+class LogicalChannel
+{
+public:
+	AFE_base&	afe;
+	uint8_t		ch_number;
+
+	LogicalChannel( AFE_base& a, uint8_t ch ) : afe( a ), ch_number( ch ) {}
+	long	start_and_read( void ) { return afe.start_and_read( ch_number ); }
+	double	raw2uv( long raw ) { return afe.raw2uv( ch_number, raw ); }
+};
+
 int main( void )
 {
 	printf( "***** Hello, NAFE13388 UIM board! *****\r\n" );
@@ -22,6 +33,11 @@ int main( void )
 	afe.open_logical_channel( 0, 0x1710, 0x00A4, 0xBC00, 0x0000 );
 	afe.open_logical_channel( 1, 0x2710, 0x00A4, 0xBC00, 0x0000 );
 
+	LogicalChannel	lc[ 2 ]	= {
+			LogicalChannel( afe, 0 ),
+			LogicalChannel( afe, 1 )
+	};
+
 	afe.use_DRDY_trigger( false );	//	default = true
 
 	printf( "\r\nenabled logical channel(s) %2d\r\n", afe.enabled_logical_channels() );
@@ -30,8 +46,8 @@ int main( void )
 	{
 		for ( auto ch = 0; ch < 2; ch++ )
 		{
-			int32_t	data	= afe.start_and_read( ch );
-			printf( "   channel %2d : %8ld (%lfuV),", ch, data, afe.raw2uv( ch, data ) );
+			int32_t	data	= lc[ ch ].start_and_read();
+			printf( "   channel %2d : %8ld (%lfuV),", ch, data, lc[ ch ].raw2uv( data ) );
 		}
 		printf( "\r\n" );
 	}
